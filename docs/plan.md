@@ -42,7 +42,7 @@ flowchart LR
 | Motore | NEMA 17 | — | dosatura volumetrica a passi |
 | Driver | **TMC2209** | STEP/DIR + UART + DIAG | silenzioso · StallGuard per il rilevamento del blocco |
 | Dosatore | coclea (auger) in tubo, stampata 3D | — | PETG o PLA |
-| Alimentazione | 12V per il motore + step-down 5V | — | dimensionato sui picchi del passo-passo |
+| Alimentazione | alimentatore **12V 2A** + step-down a 5V | — | 12V al TMC2209, 5V a ESP32 e sensori |
 
 Vincoli dell'ESP32 classico da rispettare nel cablaggio:
 
@@ -50,6 +50,8 @@ Vincoli dell'ESP32 classico da rispettare nel cablaggio:
 - strapping pin (0, 2, 5, 12, 15) da evitare per segnali con pull-up/down esterni
 - GPIO 6–11 riservati alla flash
 - UART: UART0 è la console USB → WL-134 e TMC2209 su UART1/UART2
+
+Assegnazione dei pin: [`hardware/pinout.md`](../hardware/pinout.md).
 
 ### Antenna del lettore
 
@@ -69,8 +71,8 @@ Vincoli dell'ESP32 classico da rispettare nel cablaggio:
 | Dose (passi) | `number` (template) | `restore_value: true` |
 | Inizio/fine fasce | `datetime` (type `time`, template) | `restore_value: true` |
 | Soglia cisterna | `number` (template) | `restore_value: true` |
-| ID microchip autorizzati | `globals` / `text` | `restore_value: true` |
-| Flag fasce | `globals` bool × 3 | `restore_value: true` — un riavvio a metà fascia non rieroga |
+| ID microchip autorizzati | `globals` array (max N, oggi 1) | `restore_value: true` |
+| Flag fasce | `globals` bool **per gatto × fascia** | `restore_value: true` — un riavvio a metà fascia non rieroga |
 | Pausa | `switch` (template) | `restore_mode: RESTORE_DEFAULT_OFF` |
 | Eroga ora | `button` | — |
 | Motore | `stepper` (STEP/DIR) | — |
@@ -110,14 +112,14 @@ flowchart TD
     C -- no --> X
     C -- sì --> F{"Ora in una fascia?"}
     F -- no --> X
-    F -- sì --> S{"Flag fascia = off?"}
+    F -- sì --> S{"Flag gatto × fascia = off?"}
     S -- no --> X
     S -- sì --> L{"Livello > soglia?"}
     L -- no --> A["Evento: cisterna vuota"]
     L -- sì --> D["Ruota N passi"]
     D --> SG{"StallGuard?"}
     SG -- sì --> J["Stop · retromarcia breve · evento: coclea bloccata"]
-    SG -- no --> ON["Flag fascia → on"]
+    SG -- no --> ON["Flag gatto × fascia → on"]
     ON --> E["Evento: erogato"]
     E --> M["Registra livello post-dose"]
 ```
@@ -132,6 +134,15 @@ Reset giornaliero: `on_time` alle **00:00** sul dispositivo, tutti i flag → `o
 | 2 — pomeriggio | 12:00 – 17:59 |
 | 3 — sera | 18:00 – 23:59 |
 
+### Più gatti
+
+Oggi **un solo microchip**, ma la struttura è già per N:
+
+- lista di ID autorizzati invece di un ID singolo
+- flag di fascia **per gatto**: ogni gatto ha la sua erogazione per fascia
+- aggiungere un gatto = aggiungere un ID (da HA o via BLE), senza riscrivere il firmware
+- in futuro, eventualmente: dose per gatto
+
 ### Dose e verifica col livello
 
 Dose = **numero di passi** del motore. Il livello misurato dal laser chiude il ciclo:
@@ -143,7 +154,7 @@ Dose = **numero di passi** del motore. Il livello misurato dal laser chiude il c
 | Calibrazione | mm di calo ÷ passi erogati, media mobile → stima delle **dosi residue** |
 | Lettura stabile | mediana di più campioni, a motore fermo e dopo un breve assestamento |
 
-Il calo di una singola dose (~5 mm con Ø 10 cm) è vicino al rumore del ToF su una superficie irregolare: la verifica è affidabile solo sul cumulato.
+Con il tubo da Ø ~7,4 cm una dose fa calare il livello di **~9 mm**, sopra il rumore del ToF: la verifica è possibile già sulla singola dose, il cumulato la rende robusta.
 
 ### Comportamento offline
 
@@ -190,27 +201,25 @@ Istanza: **esistente**. Ruolo ridotto a **pannello remoto e notifiche**:
 
 ### Cisterna
 
-Cilindro **stretto e alto**, perché ogni dose produca un calo di livello misurabile.
+Cilindro **stretto e alto**, perché ogni dose produca un calo di livello ben misurabile. Riferimento: **tubo tipo Pringles**, Ø interno ~7,4 cm.
 
 Ipotesi: dose 15 g ≈ 37 ml (croccantini sfusi ~0,4 kg/L), consumo ~55 g/giorno.
 
-| Ø interno | Altezza | Capacità | Calo per dose | Autonomia |
-|---|---|---|---|---|
-| 8 cm | 30 cm | ~1,5 L · ~600 g | ~7 mm | ~11 giorni |
-| **10 cm** | **30 cm** | **~2,4 L · ~940 g** | **~4,7 mm** | **~17 giorni** |
-| 10 cm | 40 cm | ~3,1 L · ~1,25 kg | ~4,7 mm | ~23 giorni |
-
-Partenza: **Ø 8–10 cm × 30 cm**, da validare al banco col VL53L0X.
+| Altezza utile | Capacità | Calo per dose | Autonomia |
+|---|---|---|---|
+| **23 cm** (una lattina) | ~1 L · ~400 g | **~8,6 mm** | ~7 giorni |
+| 35 cm | ~1,5 L · ~600 g | ~8,6 mm | ~11 giorni |
 
 - Sensore **centrato** sul coperchio: la superficie dei croccantini forma un cono
+- ⚠️ **Cono del VL53L0X** (~25°): a 23 cm copre Ø ~10 cm, più del tubo, e vede le pareti. Da validare al banco: interno **opaco e scuro**, sensore centrato; ripiego **VL53L1X** con ROI ristretta
 - Imbocco della coclea ≥ **5–6×** la dimensione del croccantino, contro i ponti
-- Interno liscio (PETG, o tubo commerciale in PMMA/PVC alimentare)
+- Una lattina vera ha fondo metallico e interno in alluminio: solo come riferimento di misura; il prototipo usa un tubo stampato o in plastica
 
 ### Altro
 
 1. **Lettore**: antenna ad anello all'imbocco della ciotola, lontana da motore e metallo
 2. **Ciotola** in plastica o ceramica, non metallica
-3. **Alimentazione**: 12V per il motore, step-down a 5V/3.3V per la logica
+3. **Alimentazione**: 12V 2A, step-down a 5V per la logica
 
 ## Decisioni
 
@@ -225,11 +234,13 @@ Partenza: **Ø 8–10 cm × 30 cm**, da validare al banco col VL53L0X.
 | 2026-10-20 | Identificazione: **microchip sottocutaneo FDX-B 134.2 kHz** (lettore WL-134) |
 | 2026-10-20 | Livello: **laser ToF VL53L0X** (VL53L1X come ripiego, componente esterno) |
 | 2026-10-20 | Dose in **passi**, verifica col livello cumulato + **StallGuard** |
-| 2026-10-20 | Cisterna: **cilindro Ø 8–10 cm × 30 cm** |
+| 2026-10-20 | Cisterna: **cilindro Ø ~7,4 cm** (riferimento tubo Pringles), altezza 23–35 cm |
 | 2026-10-20 | Config locale: **BLE + nRF Connect**, pairing con **passkey su adesivo** |
+| 2026-10-20 | Alimentazione **12V** |
+| 2026-10-20 | **Un gatto** per ora, struttura pronta per N |
+| 2026-10-20 | Mappa dei pin: [`hardware/pinout.md`](../hardware/pinout.md) |
 
 ### Aperte
 
-- [ ] Alimentazione: 12V o 24V per il NEMA 17
-- [ ] Numero massimo di microchip autorizzati (un gatto o più)
-- [ ] Mappa dei pin
+- [ ] Altezza della cisterna (23 vs 35 cm)
+- [ ] VL53L0X nel tubo: da validare al banco
