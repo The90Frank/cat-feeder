@@ -34,10 +34,11 @@ BAR_L = 140.0
 BAR_GAP = 10.0          # between the two bars of a module
 BAR_CLEAR = 0.5
 
-# --- Bowl (printed) --------------------------------------------------------------
-BOWL_D = 130.0
+# --- Bowl (printed, square) -------------------------------------------------------
+BOWL_SIDE = 130.0
 BOWL_H = 45.0
 BOWL_WALL = 3.0
+BOWL_FILLET = 12.0      # vertical corners, easier to clean
 BOWL_Y = -80.0          # bowl center
 BOWL_SEAT_DEPTH = 12.0
 BOWL_CLEAR = 2.0
@@ -51,10 +52,15 @@ ANT_GROOVE_GAP = 2.0    # wall between bowl seat and groove
 AUGER_ID = 40.0
 AUGER_WALL = 5.0
 AUGER_Z = REAR_H + 28.0             # axis height
-AUGER_Y0 = -30.0                    # front end (outlet over the bowl)
+AUGER_Y0 = -25.0                    # front end of the horizontal tube
 AUGER_Y1 = 110.0                    # rear end (motor flange)
-OUTLET_W = 30.0
-OUTLET_Y = -25.0                    # outlet center
+# The horizontal run between the hopper inlet and AUGER_Y0 keeps kibble inside the
+# auger flights when the motor is stopped: the auger itself is the shut-off.
+
+# --- Spout: sloped tube after the auger, ends inside the bowl -----------------------
+SPOUT_ANGLE = 30.0                  # degrees below horizontal; kibble slides at ~25-30
+SPOUT_L = 45.0
+BOWL_NOTCH_CLEAR = 1.0
 
 # --- NEMA 17 -------------------------------------------------------------------------
 NEMA = 42.3
@@ -92,6 +98,28 @@ def cyl_y(r, y0, y1, x=0.0, z=0.0):
     return Part.makeCylinder(r, y1 - y0, V(x, y0, z), V(0, 1, 0))
 
 
+def cyl_dir(r, start, direction, length):
+    d = App.Vector(direction)
+    d.normalize()
+    return Part.makeCylinder(r, length, start, d)
+
+
+def spout_dir():
+    import math
+    a = math.radians(SPOUT_ANGLE)
+    return V(0, -math.cos(a), -math.sin(a))
+
+
+def spout_start():
+    return V(0, AUGER_Y0, AUGER_Z)
+
+
+def bowl_footprint(side, z0, z1, fillet):
+    b = box(-side / 2, BOWL_Y - side / 2, z0, side / 2, BOWL_Y + side / 2, z1)
+    edges = [e for e in b.Edges if abs(e.Vertexes[0].Point.z - e.Vertexes[1].Point.z) > 1e-6]
+    return b.makeFillet(fillet, edges) if fillet > 0 else b
+
+
 def ballast_pockets(y_center, z_bottom=0.0):
     """Two side-by-side pockets for steel flat bars, open at the bottom."""
     w = BAR_W + BAR_CLEAR
@@ -111,11 +139,14 @@ def cut_all(shape, tools):
 def make_front_base():
     hw = BASE_W / 2
     s = box(-hw, -FRONT_D, 0, hw, 0, FRONT_H)
-    seat_r = BOWL_D / 2 + BOWL_CLEAR / 2
-    seat = cyl_z(seat_r, FRONT_H - BOWL_SEAT_DEPTH, FRONT_H + 1, y=BOWL_Y)
-    g_in = seat_r + ANT_GROOVE_GAP
-    groove = cyl_z(g_in + ANT_GROOVE_W, FRONT_H - ANT_GROOVE_DEPTH, FRONT_H + 1, y=BOWL_Y).cut(
-        cyl_z(g_in, FRONT_H - ANT_GROOVE_DEPTH - 1, FRONT_H + 2, y=BOWL_Y))
+    seat_side = BOWL_SIDE + BOWL_CLEAR
+    z_seat = FRONT_H - BOWL_SEAT_DEPTH
+    seat = bowl_footprint(seat_side, z_seat, FRONT_H + 1, BOWL_FILLET + BOWL_CLEAR / 2)
+    g_in = seat_side + 2 * ANT_GROOVE_GAP
+    g_out = g_in + 2 * ANT_GROOVE_W
+    z_g = FRONT_H - ANT_GROOVE_DEPTH
+    groove = bowl_footprint(g_out, z_g, FRONT_H + 1, BOWL_FILLET + ANT_GROOVE_GAP + ANT_GROOVE_W).cut(
+        bowl_footprint(g_in, z_g - 1, FRONT_H + 2, BOWL_FILLET + ANT_GROOVE_GAP))
     return cut_all(s, [seat, groove] + ballast_pockets(BOWL_Y))
 
 
@@ -129,12 +160,15 @@ def make_rear_base():
 
 
 def make_bowl():
-    r = BOWL_D / 2
-    outer = cyl_z(r, 0, BOWL_H)
-    inner = cyl_z(r - BOWL_WALL, BOWL_WALL, BOWL_H + 1)
+    z0 = FRONT_H - BOWL_SEAT_DEPTH
+    outer = bowl_footprint(BOWL_SIDE, z0, z0 + BOWL_H, BOWL_FILLET)
+    inner = bowl_footprint(BOWL_SIDE - 2 * BOWL_WALL, z0 + BOWL_WALL, z0 + BOWL_H + 1,
+                           BOWL_FILLET - BOWL_WALL)
     s = outer.cut(inner)
-    s.translate(V(0, BOWL_Y, FRONT_H - BOWL_SEAT_DEPTH))
-    return s
+    # Notch in the rear wall hugging the spout: no gap where kibble could escape.
+    ro = AUGER_ID / 2 + AUGER_WALL + BOWL_NOTCH_CLEAR
+    notch = cyl_dir(ro, spout_start(), spout_dir(), SPOUT_L + 5)
+    return s.cut(notch)
 
 
 def make_auger_housing():
@@ -150,10 +184,20 @@ def make_auger_housing():
     bore = cyl_y(ri, AUGER_Y0 - 1, AUGER_Y1 + 1, z=AUGER_Z)
     socket = cyl_z(HOPPER_ID / 2 + HOPPER_WALL + 0.3, AUGER_Z + ro, AUGER_Z + ro + COLLAR_H + 1, y=HOPPER_Y)
     inlet = cyl_z(HOPPER_ID / 2 - 2, AUGER_Z, AUGER_Z + ro + 1, y=HOPPER_Y)
-    outlet = box(-OUTLET_W / 2, OUTLET_Y - OUTLET_W / 2, AUGER_Z - ro - 1,
-                 OUTLET_W / 2, OUTLET_Y + OUTLET_W / 2, AUGER_Z)
     shaft = cyl_y(11.5, AUGER_Y1 - 1, AUGER_Y1 + NEMA_FLANGE_T + 1, z=AUGER_Z)
-    return cut_all(s, [bore, socket, inlet, outlet, shaft])
+    return cut_all(s, [bore, socket, inlet, shaft])
+
+
+def make_spout():
+    """Separate part: elbow + sloped tube, slips onto the front of the auger housing."""
+    ro = AUGER_ID / 2 + AUGER_WALL
+    ri = AUGER_ID / 2
+    start = spout_start()
+    s = cyl_dir(ro, start, spout_dir(), SPOUT_L).fuse(Part.makeSphere(ro, start))
+    s = s.cut(Part.makeSphere(ri, start))
+    s = s.cut(cyl_dir(ri, start, spout_dir(), SPOUT_L + 1))
+    # Keep only what lies in front of the housing.
+    return s.cut(box(-ro - 1, AUGER_Y0, AUGER_Z - ro - 1, ro + 1, AUGER_Y0 + ro + 1, AUGER_Z + ro + 1))
 
 
 def hopper_z0():
@@ -203,6 +247,7 @@ PARTS = [
     ("RearBase", make_rear_base, True, (0.85, 0.85, 0.80)),
     ("Bowl", make_bowl, True, (0.95, 0.60, 0.30)),
     ("AugerHousing", make_auger_housing, True, (0.40, 0.65, 0.90)),
+    ("Spout", make_spout, True, (0.30, 0.55, 0.85)),
     *[(f"HopperSegment{i + 1}", (lambda i=i: make_hopper_segment(i)), True, (0.80, 0.90, 1.00))
       for i in range(HOPPER_SEGMENTS)],
     ("Lid", make_lid, True, (0.40, 0.65, 0.90)),
