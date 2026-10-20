@@ -2,6 +2,8 @@
 
 Run inside FreeCAD (GUI or freecadcmd):
     exec(open("cad/build.py").read(), {"__file__": "cad/build.py"})
+Add "EXPORT": True to the globals to write STEP + STL files to cad/export/.
+The helical auger sweep is heavy: prefer freecadcmd for a full rebuild.
 
 Axes: X = width (centered), Y = depth (front/bowl is -Y, wall is +Y), Z = up.
 Every printable part must fit a 180 x 180 x 180 mm bed (checked at the end).
@@ -81,6 +83,18 @@ BACK_T = 6.0
 BACK_H = 170.0
 UPPER_BRACKET_H = 90.0
 UPPER_BRACKET_Z = 240.0             # above the segment joint collar
+
+# --- Auger (printed) ------------------------------------------------------------------
+AUGER_OD = 38.0                     # 1 mm radial clearance in the 40 mm bore
+AUGER_CORE_D = 12.0
+AUGER_PITCH = 30.0
+AUGER_FLIGHT_T = 3.0
+AUGER_HUB_D = 20.0
+AUGER_HUB_L = 14.5
+AUGER_FRONT = AUGER_Y0 + 1.0        # flights stop just inside the housing end
+MOTOR_SHAFT_D = 5.0
+MOTOR_SHAFT_FLAT = 4.5              # D-cut: distance from flat to opposite side
+SHAFT_CLEAR = 0.2
 
 # --- Fasteners -----------------------------------------------------------------------
 M3_CLEAR = 3.4
@@ -354,6 +368,44 @@ def make_lid():
     return cut_all(s, [skirt, board, window])
 
 
+def make_auger():
+    """Helical auger on a core, with a D-bore hub for the NEMA 17 shaft.
+
+    Built along local Z (z=0 at the front), then turned onto the housing axis (+Y).
+    Flight handedness only sets the motor direction, which firmware can invert.
+    """
+    import math
+    y_hub = AUGER_Y1 - 0.5 - AUGER_HUB_L
+    flight_l = y_hub - AUGER_FRONT
+    r_core = AUGER_CORE_D / 2
+    t = AUGER_FLIGHT_T
+    helix = Part.makeHelix(AUGER_PITCH, flight_l, r_core)
+    pts = [V(r_core - 0.5, 0, -t / 2), V(AUGER_OD / 2, 0, -t / 2),
+           V(AUGER_OD / 2, 0, t / 2), V(r_core - 0.5, 0, t / 2)]
+    sweep = Part.BRepOffsetAPI.MakePipeShell(Part.Wire(helix))
+    sweep.setBiNormalMode(V(0, 0, 1))   # keep the profile radial (thread-style sweep)
+    sweep.add(Part.makePolygon(pts + [pts[0]]))
+    sweep.build()
+    sweep.makeSolid()
+    flight = sweep.shape()
+    # Trim the half-thickness that sticks out at both ends.
+    flight = flight.common(Part.makeCylinder(AUGER_OD, flight_l, V(0, 0, 0)))
+    core = Part.makeCylinder(r_core, flight_l)
+    hub = Part.makeCylinder(AUGER_HUB_D / 2, AUGER_HUB_L, V(0, 0, flight_l))
+    s = core.fuse([flight, hub]).removeSplitter()
+    z_end = flight_l + AUGER_HUB_L
+    depth = AUGER_HUB_L - 0.5
+    r_bore = MOTOR_SHAFT_D / 2 + SHAFT_CLEAR
+    flat_x = MOTOR_SHAFT_FLAT - MOTOR_SHAFT_D / 2 + SHAFT_CLEAR
+    bore = Part.makeCylinder(r_bore, depth + 1, V(0, 0, z_end - depth)).common(
+        box(-r_bore - 1, -r_bore - 1, z_end - depth - 1, flat_x, r_bore + 1, z_end + 2))
+    grub = Part.makeCylinder(M3_PILOT / 2, AUGER_HUB_D, V(0, 0, z_end - depth / 2), V(1, 0, 0))
+    s = s.cut(bore).cut(grub)
+    s.rotate(V(0, 0, 0), V(1, 0, 0), -90)   # local +Z -> global +Y
+    s.translate(V(0, AUGER_FRONT, AUGER_Z))
+    return s
+
+
 def make_motor():
     return box(-NEMA / 2, AUGER_Y1 + NEMA_FLANGE_T, AUGER_Z - NEMA / 2,
                NEMA / 2, AUGER_Y1 + NEMA_FLANGE_T + NEMA_L, AUGER_Z + NEMA / 2)
@@ -392,6 +444,7 @@ PARTS = [
     ("Bowl", make_bowl, True, (0.95, 0.60, 0.30)),
     ("AugerHousing", make_auger_housing, True, (0.40, 0.65, 0.90)),
     ("Spout", make_spout, True, (0.30, 0.55, 0.85)),
+    ("Auger", make_auger, True, (0.95, 0.85, 0.30)),
     *[(f"HopperSegment{i + 1}", (lambda i=i: make_hopper_segment(i)), True, (0.80, 0.90, 1.00))
       for i in range(HOPPER_SEGMENTS)],
     ("Lid", make_lid, True, (0.40, 0.65, 0.90)),
@@ -399,6 +452,26 @@ PARTS = [
     ("UpperBracket", make_upper_bracket, True, (0.70, 0.70, 0.70)),
     ("NEMA17", make_motor, False, (0.20, 0.20, 0.20)),
 ]
+
+
+def export_parts(doc, out_dir):
+    """STEP + STL for every printable part, in assembly position (the slicer lays it flat)."""
+    import MeshPart
+    os.makedirs(out_dir, exist_ok=True)
+    for name, _, printable, _ in PARTS:
+        if not printable:
+            continue
+        shape = doc.getObject(name).Shape
+        base = os.path.join(out_dir, _snake(name))
+        shape.exportStep(base + ".step")
+        mesh = MeshPart.meshFromShape(Shape=shape, LinearDeflection=0.05, AngularDeflection=0.1)
+        mesh.write(base + ".stl")
+        print(f"exported {_snake(name)}")
+
+
+def _snake(name):
+    import re
+    return re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "-", name).lower()
 
 
 def build():
@@ -414,7 +487,7 @@ def build():
             obj.ViewObject.ShapeColor = color
             if name.startswith("Hopper"):
                 obj.ViewObject.Transparency = 50
-        bb = shape.BoundBox
+        bb = shape.optimalBoundingBox()   # exact: BoundBox is loose on helical faces
         dims = sorted((bb.XLength, bb.YLength, bb.ZLength), reverse=True)
         fits = dims[0] <= BED - BED_MARGIN
         if printable:
@@ -431,6 +504,8 @@ def build():
     for name, dims, fits in report:
         d = " x ".join(f"{v:.0f}" for v in dims)
         print(f"{'OK ' if fits else 'BIG'} {name:15s} {d}")
+    if globals().get("EXPORT"):
+        export_parts(doc, os.path.join(here, "export"))
     if not all(f for _, _, f in report):
         print(f"WARNING: some parts exceed {BED - BED_MARGIN:.0f} mm")
     return doc
