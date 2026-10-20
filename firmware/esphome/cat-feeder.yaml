@@ -48,7 +48,7 @@ external_components:
   - source:
       type: local
       path: components
-    components: [fdx_b, tmc2209_uart]
+    components: [fdx_b, tmc2209_uart, ble_passkey]
 
 uart:
   - id: uart_chip
@@ -65,6 +65,7 @@ fdx_b:
   id: chip_reader
   uart_id: uart_chip
   last_tag:
+    id: last_chip
     name: Last chip
   on_tag:
     - script.execute:
@@ -146,6 +147,141 @@ stepper:
     max_speed: 800 steps/s
     acceleration: 400 steps/s^2
     deceleration: 400 steps/s^2
+
+# --- Local configuration over BLE (nRF Connect) ------------------------------------------
+# Every characteristic is UTF-8 text. Reads are open; writes need a paired client
+# (static passkey on the device sticker). Layout: docs/ble-gatt.md
+esp32_ble:
+  name: ${name}
+  io_capability: display_only
+  auth_req_mode: sc_mitm_bond
+
+ble_passkey:
+  id: ble_auth
+  passkey: !secret ble_passkey
+
+esp32_ble_server:
+  max_clients: 1
+  services:
+    - uuid: 6e3c0000-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+      advertise: true
+      characteristics:
+        - id: ble_dose
+          uuid: 6e3c0001-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+          description: "Dose (steps)"
+          read: true
+          write: true
+          value:
+            data: "-"
+          on_write:
+            - script.execute:
+                id: ble_write
+                key: dose
+                conn: !lambda return id;
+                value: !lambda return std::string(x.begin(), x.end());
+        - id: ble_override
+          uuid: 6e3c0002-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+          description: "Override dose (steps, 0 = standard)"
+          read: true
+          write: true
+          value:
+            data: "-"
+          on_write:
+            - script.execute:
+                id: ble_write
+                key: override
+                conn: !lambda return id;
+                value: !lambda return std::string(x.begin(), x.end());
+        - id: ble_low_level
+          uuid: 6e3c0003-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+          description: "Low level threshold (%)"
+          read: true
+          write: true
+          value:
+            data: "-"
+          on_write:
+            - script.execute:
+                id: ble_write
+                key: low_level
+                conn: !lambda return id;
+                value: !lambda return std::string(x.begin(), x.end());
+        - id: ble_pause
+          uuid: 6e3c0004-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+          description: "Pause (0/1)"
+          read: true
+          write: true
+          value:
+            data: "-"
+          on_write:
+            - script.execute:
+                id: ble_write
+                key: pause
+                conn: !lambda return id;
+                value: !lambda return std::string(x.begin(), x.end());
+        - id: ble_slots
+          uuid: 6e3c0005-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+          description: "Slots HH:MM-HH:MM x3"
+          read: true
+          write: true
+          value:
+            data: "-"
+          on_write:
+            - script.execute:
+                id: ble_write
+                key: slots
+                conn: !lambda return id;
+                value: !lambda return std::string(x.begin(), x.end());
+        - id: ble_chip1
+          uuid: 6e3c0006-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+          description: "Authorized chip 1"
+          read: true
+          write: true
+          value:
+            data: "-"
+          on_write:
+            - script.execute:
+                id: ble_write
+                key: chip1
+                conn: !lambda return id;
+                value: !lambda return std::string(x.begin(), x.end());
+        - id: ble_feed
+          uuid: 6e3c0007-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+          description: "Feed now (empty or steps)"
+          read: false
+          write: true
+          value:
+            data: "-"
+          on_write:
+            - script.execute:
+                id: ble_write
+                key: feed
+                conn: !lambda return id;
+                value: !lambda return std::string(x.begin(), x.end());
+        - id: ble_reset
+          uuid: 6e3c0008-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+          description: "Reset slot flags (any value)"
+          read: false
+          write: true
+          value:
+            data: "-"
+          on_write:
+            - script.execute:
+                id: ble_write
+                key: reset
+                conn: !lambda return id;
+                value: !lambda return std::string(x.begin(), x.end());
+        - id: ble_status
+          uuid: 6e3c0009-1a2b-4c5d-8e9f-0a1b2c3d4e5f
+          description: "Status"
+          read: true
+          write: false
+          value:
+            data: "-"
+
+interval:
+  - interval: 5s
+    then:
+      - script.execute: ble_refresh
 
 # --- Configuration (persisted in flash, editable from HA and BLE) ---------------------
 number:
@@ -301,6 +437,12 @@ button:
       - script.execute:
           id: manual_feed
           source: ha
+          steps: 0
+  - platform: template
+    name: Forget BLE devices
+    entity_category: config
+    on_press:
+      - lambda: id(ble_auth).clear_bonds();
   - platform: template
     name: Reset slot flags
     entity_category: config
@@ -528,6 +670,7 @@ script:
     mode: single
     parameters:
       source: string
+      steps: int              # 0 = override dose if set, else standard dose
     then:
       - lambda: |-
           uint32_t t = millis();
@@ -536,7 +679,96 @@ script:
             return;
           }
           id(last_override_ms) = t;
-          int steps = id(override_steps).state > 0 ? (int) id(override_steps).state
-                                                   : (int) id(dose_steps).state;
-          ESP_LOGI("feeder", "Manual feed from %s: %d steps", source.c_str(), steps);
-          id(dispense).execute(steps, -1, std::string("manual_feed_") + source);
+          int n = steps > 0 ? steps
+                  : id(override_steps).state > 0 ? (int) id(override_steps).state
+                                                 : (int) id(dose_steps).state;
+          ESP_LOGI("feeder", "Manual feed from %s: %d steps", source.c_str(), n);
+          id(dispense).execute(n, -1, std::string("manual_feed_") + source);
+
+  # BLE writes from any characteristic land here: auth check, validation, apply.
+  - id: ble_write
+    mode: queued
+    max_runs: 5
+    parameters:
+      key: string
+      value: string
+      conn: int
+    then:
+      - lambda: |-
+          if (!id(ble_auth).is_authenticated(conn)) {
+            ESP_LOGW("ble", "Write to '%s' refused: client not paired", key.c_str());
+            return;
+          }
+          auto to_int = [](const std::string &str, int &out) {
+            if (str.empty()) return false;
+            char *end;
+            long v = strtol(str.c_str(), &end, 10);
+            if (*end != '\0') return false;
+            out = (int) v;
+            return true;
+          };
+          bool ok = false;
+          int v = 0;
+          if (key == "dose") {
+            ok = to_int(value, v) && v >= 200 && v <= 32000;
+            if (ok) id(dose_steps).make_call().set_value(v).perform();
+          } else if (key == "override") {
+            ok = to_int(value, v) && v >= 0 && v <= 32000;
+            if (ok) id(override_steps).make_call().set_value(v).perform();
+          } else if (key == "low_level") {
+            ok = to_int(value, v) && v >= 0 && v <= 50;
+            if (ok) id(low_level_pct).make_call().set_value(v).perform();
+          } else if (key == "pause") {
+            ok = value == "0" || value == "1";
+            if (ok) {
+              if (value == "1") id(paused).turn_on(); else id(paused).turn_off();
+            }
+          } else if (key == "slots") {
+            int t[12];
+            ok = sscanf(value.c_str(), "%d:%d-%d:%d,%d:%d-%d:%d,%d:%d-%d:%d", &t[0], &t[1], &t[2], &t[3],
+                        &t[4], &t[5], &t[6], &t[7], &t[8], &t[9], &t[10], &t[11]) == 12;
+            for (int i = 0; ok && i < 12; i += 2)
+              ok = t[i] >= 0 && t[i] <= 23 && t[i + 1] >= 0 && t[i + 1] <= 59;
+            if (ok) {
+              datetime::TimeEntity *e[6] = {id(slot1_start), id(slot1_end), id(slot2_start),
+                                            id(slot2_end), id(slot3_start), id(slot3_end)};
+              for (int i = 0; i < 6; i++)
+                e[i]->make_call().set_time(t[2 * i], t[2 * i + 1], (i % 2) ? 59 : 0).perform();
+            }
+          } else if (key == "chip1") {
+            ok = value.size() <= 20 && std::all_of(value.begin(), value.end(), ::isdigit);
+            if (ok) id(chip_1).make_call().set_value(value).perform();
+          } else if (key == "feed") {
+            ok = value.empty() || (to_int(value, v) && v > 0 && v <= 32000);
+            if (ok) id(manual_feed).execute(std::string("ble"), value.empty() ? 0 : v);
+          } else if (key == "reset") {
+            ok = true;
+            id(fed_bits) = 0;
+          }
+          if (ok) ESP_LOGI("ble", "%s <- '%s'", key.c_str(), value.c_str());
+          else ESP_LOGW("ble", "Invalid value for %s: '%s'", key.c_str(), value.c_str());
+      - script.execute: ble_refresh
+
+  # Mirror the current state into the readable characteristics.
+  - id: ble_refresh
+    mode: restart
+    then:
+      - lambda: |-
+          auto num = [](float f) { return isnan(f) ? std::string("?") : to_string((int) lroundf(f)); };
+          id(ble_dose).set_value(num(id(dose_steps).state));
+          id(ble_override).set_value(num(id(override_steps).state));
+          id(ble_low_level).set_value(num(id(low_level_pct).state));
+          id(ble_pause).set_value(std::string(id(paused).state ? "1" : "0"));
+          id(ble_slots).set_value(str_sprintf("%02u:%02u-%02u:%02u,%02u:%02u-%02u:%02u,%02u:%02u-%02u:%02u",
+              id(slot1_start).hour, id(slot1_start).minute, id(slot1_end).hour, id(slot1_end).minute,
+              id(slot2_start).hour, id(slot2_start).minute, id(slot2_end).hour, id(slot2_end).minute,
+              id(slot3_start).hour, id(slot3_start).minute, id(slot3_end).hour, id(slot3_end).minute));
+          id(ble_chip1).set_value(id(chip_1).state);
+          auto now = id(sys_time).now();
+          std::string clock = now.is_valid() ? now.strftime("%Y-%m-%d %H:%M") : "invalid";
+          uint32_t f = id(fed_bits);
+          id(ble_status).set_value(str_sprintf("level=%s%%;doses=%s;fed=%c%c%c;paused=%d;time=%s;chip=%s",
+              num(id(level_pct).state).c_str(), num(id(doses_left).state).c_str(),
+              (f & 1) ? '1' : '0', (f & 2) ? '1' : '0', (f & 4) ? '1' : '0',
+              id(paused).state ? 1 : 0, clock.c_str(),
+              id(last_chip).has_state() ? id(last_chip).state.c_str() : "-"));
