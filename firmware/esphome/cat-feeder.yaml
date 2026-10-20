@@ -44,6 +44,29 @@ i2c:
   scl: GPIO22
   scan: true
 
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [fdx_b]
+
+uart:
+  - id: uart_chip
+    rx_pin: GPIO16            # WL-134 TX
+    tx_pin: GPIO17            # loopback self-test only: jumper GPIO17 -> GPIO16
+    baud_rate: 9600
+
+# --- Microchip reader (WL-134, FDX-B 134.2 kHz) --------------------------------------
+fdx_b:
+  id: chip_reader
+  uart_id: uart_chip
+  last_tag:
+    name: Last chip
+  on_tag:
+    - script.execute:
+        id: on_chip
+        chip: !lambda return x;
+
 # --- Clock ---------------------------------------------------------------------------
 # SNTP when online, DS3231 otherwise. Both set the system clock, so every time
 # component (and the logic below) reads the same time.
@@ -251,6 +274,14 @@ button:
       - globals.set:
           id: fed_bits
           value: "0"
+  - platform: template
+    name: "Test: send FDX-B frame"
+    entity_category: diagnostic
+    on_press:
+      # Needs a jumper GPIO17 -> GPIO16 (reader disconnected). Sample ID 380123456789012.
+      - lambda: |-
+          auto frame = fdx_b::FdxBReader::build_frame(380, 123456789012ULL);
+          id(uart_chip).write_array(frame.data(), frame.size());
   - platform: template
     name: "Test: authorized chip read"
     entity_category: diagnostic

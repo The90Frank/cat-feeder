@@ -13,13 +13,14 @@ GPIO esposti dalla devkit: 2, 4, 5, 12–19, 21, 22, 23, 25, 26, 27, 32, 33, 34,
 | VL53L0X | SDA | 21 | I/O | indirizzo 0x29 · DS3231 è 0x68: nessun conflitto |
 | VL53L0X | SCL | 22 | out | |
 | WL-134 | TX → RX ESP | 16 | in | UART2 · ⚠️ verificare livello: se il modulo esce a 5V serve un partitore |
+| (autotest) | TX → ponticello su GPIO16 | 17 | out | UART2 · solo per il test del lettore senza WL-134 |
 | TMC2209 | STEP | 32 | out | |
 | TMC2209 | DIR | 33 | out | |
 | TMC2209 | EN | 25 | out | attivo **basso** |
 | TMC2209 | PDN_UART ← TX ESP | 27 | out | UART1 · tramite resistenza **1 kΩ** (UART single-wire) |
 | TMC2209 | PDN_UART → RX ESP | 26 | in | UART1 · collegato direttamente a PDN_UART |
 | TMC2209 | DIAG | 34 | in | StallGuard · pin solo input, ok |
-| — | riserva | 4, 13, 14, 17, 18, 19, 23 | I/O | liberi |
+| — | riserva | 4, 13, 14, 18, 19, 23 | I/O | liberi |
 | — | riserva | 35, 36 (VP), 39 (VN) | in | solo input: futuri sensori |
 | — | console USB | 1, 3 | — | UART0, lasciato al log |
 
