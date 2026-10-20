@@ -59,7 +59,7 @@ AUGER_Y1 = 110.0                    # rear end (motor flange)
 
 # --- Spout: sloped tube after the auger, ends inside the bowl -----------------------
 SPOUT_ANGLE = 30.0                  # degrees below horizontal; kibble slides at ~25-30
-SPOUT_L = 45.0
+SPOUT_REACH = 20.0                  # horizontal reach past the housing; exit face is vertical
 BOWL_NOTCH_CLEAR = 1.0
 
 # --- NEMA 17 -------------------------------------------------------------------------
@@ -167,8 +167,7 @@ def make_bowl():
     s = outer.cut(inner)
     # Notch in the rear wall hugging the spout: no gap where kibble could escape.
     ro = AUGER_ID / 2 + AUGER_WALL + BOWL_NOTCH_CLEAR
-    notch = cyl_dir(ro, spout_start(), spout_dir(), SPOUT_L + 5)
-    return s.cut(notch)
+    return s.cut(spout_body(ro))
 
 
 def make_auger_housing():
@@ -188,16 +187,29 @@ def make_auger_housing():
     return cut_all(s, [bore, socket, inlet, shaft])
 
 
-def make_spout():
-    """Separate part: elbow + sloped tube, slips onto the front of the auger housing."""
-    ro = AUGER_ID / 2 + AUGER_WALL
-    ri = AUGER_ID / 2
+def spout_body(r, extend=0.0):
+    """Elbow + sloped tube of radius r, between the housing end and a vertical exit plane.
+
+    `extend` pushes both planes outward, so a bore cut with it opens both ends cleanly.
+    """
+    import math
     start = spout_start()
-    s = cyl_dir(ro, start, spout_dir(), SPOUT_L).fuse(Part.makeSphere(ro, start))
-    s = s.cut(Part.makeSphere(ri, start))
-    s = s.cut(cyl_dir(ri, start, spout_dir(), SPOUT_L + 1))
-    # Keep only what lies in front of the housing.
-    return s.cut(box(-ro - 1, AUGER_Y0, AUGER_Z - ro - 1, ro + 1, AUGER_Y0 + ro + 1, AUGER_Z + ro + 1))
+    length = SPOUT_REACH / math.cos(math.radians(SPOUT_ANGLE)) + 2 * r
+    s = cyl_dir(r, start, spout_dir(), length).fuse(Part.makeSphere(r, start))
+    big = 4 * r + length
+    y_exit = AUGER_Y0 - SPOUT_REACH - extend
+    y_back = AUGER_Y0 + extend
+    front = box(-big, y_exit - big, AUGER_Z - big, big, y_exit, AUGER_Z + big)
+    behind = box(-big, y_back, AUGER_Z - big, big, y_back + big, AUGER_Z + big)
+    return s.cut(front).cut(behind)
+
+
+def make_spout():
+    """Separate part: short sloped tube, slips onto the front of the auger housing.
+
+    The exit face is vertical, so nothing sticks out toward the cat's head.
+    """
+    return spout_body(AUGER_ID / 2 + AUGER_WALL).cut(spout_body(AUGER_ID / 2, extend=1.0))
 
 
 def hopper_z0():
