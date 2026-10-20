@@ -1,0 +1,16 @@
+# ESPHome
+secrets.yaml
+.esphome/
+*.bin
+
+# CAD / slicer
+*.FCStd1
+*.FCBak
+*.gcode
+*.3mf.bak
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
