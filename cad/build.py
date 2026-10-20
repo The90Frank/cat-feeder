@@ -71,12 +71,12 @@ HOPPER_ID = 74.0
 HOPPER_WALL = 2.5
 HOPPER_Y = 55.0                     # hopper axis
 HOPPER_SEG_H = 115.0                # segment height; add segments for more capacity
-HOPPER_SEGMENTS = 2
+# Identical stackable segments: print N of them for more capacity (override with SEGMENTS).
+HOPPER_SEGMENTS = int(globals().get("SEGMENTS", 2))
 COLLAR_H = 18.0
 
 # --- Lid: cap over the top segment, ToF sensor in the middle, desiccant chamber behind --------
 LID_R = 48.0                        # wider than the tube so a 5 g sachet fits beside the sensor
-LID_SKIRT_D = 10.0                  # slips over the top segment
 LID_FLOOR_T = 2.0
 DESICCANT_H = 8.0                   # 5 g silica sachet: ~40 x 30 x 6 mm, lying flat
 DESICCANT_OFFSET = 8.0              # chamber starts this far behind the hopper axis
@@ -304,17 +304,16 @@ def make_hopper_segment(i):
     z1 = z0 + HOPPER_SEG_H
     ro = HOPPER_ID / 2 + HOPPER_WALL
     s = cyl_z(ro, z0, z1, y=HOPPER_Y).cut(cyl_z(HOPPER_ID / 2, z0 - 1, z1 + 1, y=HOPPER_Y))
-    if i < HOPPER_SEGMENTS - 1:
-        # Socket on top: the next segment drops in.
-        collar = cyl_z(ro + HOPPER_COLLAR_T, z1 - HOPPER_COLLAR_H, z1 + HOPPER_COLLAR_H, y=HOPPER_Y)
-        s = s.fuse(collar.cut(cyl_z(ro + 0.3, z1, z1 + HOPPER_COLLAR_H + 1, y=HOPPER_Y))
-                   .cut(cyl_z(HOPPER_ID / 2, z1 - HOPPER_COLLAR_H - 1, z1 + 1, y=HOPPER_Y)))
+    # Socket on top: the next segment, or the lid, drops in. Every segment is identical.
+    collar = cyl_z(ro + HOPPER_COLLAR_T, z1 - HOPPER_COLLAR_H, z1 + HOPPER_COLLAR_H, y=HOPPER_Y)
+    s = s.fuse(collar.cut(cyl_z(ro + 0.3, z1, z1 + HOPPER_COLLAR_H + 1, y=HOPPER_Y))
+               .cut(cyl_z(HOPPER_ID / 2, z1 - HOPPER_COLLAR_H - 1, z1 + 1, y=HOPPER_Y)))
     return s
 
 
 def lid_z():
-    """Top edge of the last hopper segment: the lid floor sits on it."""
-    return hopper_z0() + HOPPER_SEGMENTS * HOPPER_SEG_H
+    """Top of the last segment's socket: the lid floor sits on it, its spigot goes inside."""
+    return hopper_z0() + HOPPER_SEGMENTS * HOPPER_SEG_H + HOPPER_COLLAR_H
 
 
 def desiccant_region(r, z0, z1, grow=0.0):
@@ -331,9 +330,10 @@ def make_lid():
     z_top = z_ch + COVER_T
     ro = HOPPER_ID / 2 + HOPPER_WALL
     body = cyl_z(LID_R, zt, z_top, y=HOPPER_Y)
-    skirt = cyl_z(ro + 3, zt - LID_SKIRT_D, zt, y=HOPPER_Y).cut(
-        cyl_z(ro + 0.3, zt - LID_SKIRT_D - 1, zt + 0.01, y=HOPPER_Y))
-    s = body.fuse(skirt)
+    # Spigot shaped like a segment bottom: it drops into the top segment's socket.
+    spigot = cyl_z(ro, zt - HOPPER_COLLAR_H, zt, y=HOPPER_Y).cut(
+        cyl_z(HOPPER_ID / 2, zt - HOPPER_COLLAR_H - 1, zt + 0.01, y=HOPPER_Y))
+    s = body.fuse(spigot)
     r_ch = LID_R - DESICCANT_WALL
     chamber = desiccant_region(r_ch, z_floor, z_ch + 0.01)
     ledge = desiccant_region(r_ch + COVER_LEDGE, z_ch, z_top + 1, grow=COVER_LEDGE)
@@ -439,12 +439,15 @@ PARTS = [
     ("Bowl", make_bowl, True, (0.95, 0.60, 0.30)),
     ("AugerHousing", make_auger_housing, True, (0.40, 0.65, 0.90)),
     ("Auger", make_auger, True, (0.95, 0.85, 0.30)),
-    *[(f"HopperSegment{i + 1}", (lambda i=i: make_hopper_segment(i)), True, (0.80, 0.90, 1.00))
+    # One printable segment; the others are identical copies placed for the assembly check.
+    *[("HopperSegment" if i == 0 else f"HopperSegmentCopy{i + 1}",
+       (lambda i=i: make_hopper_segment(i)), i == 0, (0.80, 0.90, 1.00))
       for i in range(HOPPER_SEGMENTS)],
     ("Lid", make_lid, True, (0.40, 0.65, 0.90)),
     ("DesiccantCover", make_desiccant_cover, True, (0.95, 0.95, 0.95)),
     ("BackPlate", make_back_plate, True, (0.70, 0.70, 0.70)),
-    ("UpperBracket", make_upper_bracket, True, (0.70, 0.70, 0.70)),
+    # The upper bracket clamps segment 2: not needed with a single segment.
+    *([("UpperBracket", make_upper_bracket, True, (0.70, 0.70, 0.70))] if HOPPER_SEGMENTS >= 2 else []),
     ("NEMA17", make_motor, False, (0.20, 0.20, 0.20)),
 ]
 

@@ -243,6 +243,8 @@ Istanza: **esistente**. Ruolo ridotto a **pannello remoto e notifiche**:
 
 Cilindro **stretto e alto**, perché ogni dose produca un calo di livello ben misurabile. Riferimento: **tubo tipo Pringles**, Ø interno ~7,4 cm.
 
+**Modulare**: segmenti identici da 115 mm utili, impilabili. Si stampano N segmenti per la capienza voluta (tabella in [`hardware/bom.md`](../hardware/bom.md)); consigliati 2, massimo 4 per la portata del laser.
+
 Ipotesi: dose 15 g ≈ 37 ml (croccantini sfusi ~0,4 kg/L), consumo ~55 g/giorno.
 
 | Altezza utile | Capacità | Calo per dose | Autonomia |

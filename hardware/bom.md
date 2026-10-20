@@ -56,11 +56,26 @@ Materiale consigliato: **PETG** (alimentare per ciotola, coclea, corpo coclea e 
 | Ciotola | `bowl` | 130 × 130 × 45 |
 | Corpo coclea | `auger-housing` | 150 × 85 × 71 |
 | Coclea | `auger` | 144 × Ø 38 |
-| Cisterna, segmento 1 | `hopper-segment1` | 125 × Ø 85 |
-| Cisterna, segmento 2 | `hopper-segment2` | 115 × Ø 79 |
+| Cisterna, segmento **× N** (consigliato 2) | `hopper-segment` | 125 × Ø 85 |
 | Coperchio (sensore + camera antiumidità) | `lid` | Ø 96 × 22 |
 | Tappo camera antiumidità | `desiccant-cover` | 94 × 41 × 2 |
 | Schienale | `back-plate` | 170 × 170 × 6 |
-| Staffa superiore | `upper-bracket` | 154 × 120 × 90 |
+| Staffa superiore (solo con N ≥ 2) | `upper-bracket` | 154 × 120 × 90 |
+
+### Capienza
+
+Segmenti tutti uguali e impilabili: ognuno ha un anello in cima in cui entra il successivo (o il coperchio).
+
+| N | Altezza dispenser | Croccantini | Autonomia (~55 g/giorno) |
+|---|---|---|---|
+| 1 | ~245 mm | ~200 g | ~3–4 giorni |
+| 2 | ~360 mm | ~400 g | ~7 giorni |
+| 3 | ~475 mm | ~600 g | ~11 giorni |
+| 4 | ~590 mm | ~800 g | ~14 giorni |
+
+- **N ≤ 4** consigliato: oltre, la portata del VL53L0X su croccantini va verificata al banco
+- Con N ≥ 3 fissare a muro: la torre diventa alta
+- Cambiando N, aggiornare **Distance when empty** (Home Assistant o BLE)
+- Per l'assieme con N segmenti: `exec(..., {"SEGMENTS": N})`, vedi `cad/build.py`
 
 File in [`cad/export/`](../cad/export/), formati STEP e STL, in posizione di assemblaggio: l'orientamento di stampa si sceglie nello slicer.
