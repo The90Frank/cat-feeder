@@ -88,32 +88,14 @@ time:
         - ds1307.write_time:
             id: rtc
     on_time:
-      # Every hour: report authorized cats that missed a slot ended in the past hour,
-      # then (at midnight only) reset the flags. Same trigger, so the order is fixed.
       - seconds: 0
         minutes: 0
+        hours: 0
         then:
-          - lambda: |-
-              auto now = id(sys_time).now();
-              if (!id(paused).state) {
-                int now_m = now.hour * 60 + now.minute;
-                datetime::TimeEntity *ends[3] = {id(slot1_end), id(slot2_end), id(slot3_end)};
-                const std::string authorized[] = { id(chip_1).state };
-                for (int slot = 0; slot < 3; slot++) {
-                  int end_m = ends[slot]->hour * 60 + ends[slot]->minute;
-                  int ago = (now_m - end_m + 1440) % 1440;   // minutes since the slot ended
-                  if (ago < 1 || ago > 60) continue;
-                  for (int cat = 0; cat < ${max_cats}; cat++) {
-                    if (authorized[cat].empty() || (id(fed_bits) & (1u << (cat * 3 + slot)))) continue;
-                    ESP_LOGW("feeder", "Cat %d missed slot %d", cat, slot + 1);
-                    id(feeder_event).trigger(str_sprintf("slot_missed_%d", slot + 1));
-                  }
-                }
-              }
-              if (now.hour == 0) {
-                id(fed_bits) = 0;
-                ESP_LOGI("feeder", "Midnight: slot flags reset");
-              }
+          - globals.set:
+              id: fed_bits
+              value: "0"
+          - logger.log: "Midnight: slot flags reset"
 
 # --- State ---------------------------------------------------------------------------
 globals:
@@ -392,6 +374,11 @@ datetime:
     type: time
     optimistic: true
     restore_value: true
+    time_id: sys_time
+    on_time:              # end of the slot: did every authorized cat eat?
+      - script.execute:
+          id: check_missed
+          slot: 0
     initial_value: "11:59:59"
   - platform: template
     id: slot2_start
@@ -406,6 +393,11 @@ datetime:
     type: time
     optimistic: true
     restore_value: true
+    time_id: sys_time
+    on_time:              # end of the slot: did every authorized cat eat?
+      - script.execute:
+          id: check_missed
+          slot: 1
     initial_value: "17:59:59"
   - platform: template
     id: slot3_start
@@ -420,6 +412,11 @@ datetime:
     type: time
     optimistic: true
     restore_value: true
+    time_id: sys_time
+    on_time:              # end of the slot: did every authorized cat eat?
+      - script.execute:
+          id: check_missed
+          slot: 2
     initial_value: "23:59:59"
 
 text:
@@ -793,3 +790,18 @@ script:
               (f & 1) ? '1' : '0', (f & 2) ? '1' : '0', (f & 4) ? '1' : '0',
               id(paused).state ? 1 : 0, clock.c_str(),
               id(last_chip).has_state() ? id(last_chip).state.c_str() : "-"));
+
+  # Runs at the end of each slot. Slot 3 ends at 23:59:59, before the midnight reset.
+  - id: check_missed
+    mode: queued
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          if (id(paused).state) return;
+          const std::string authorized[] = { id(chip_1).state };
+          for (int cat = 0; cat < ${max_cats}; cat++) {
+            if (authorized[cat].empty() || (id(fed_bits) & (1u << (cat * 3 + slot)))) continue;
+            ESP_LOGW("feeder", "Cat %d missed slot %d", cat, slot + 1);
+            id(feeder_event).trigger(str_sprintf("slot_missed_%d", slot + 1));
+          }
