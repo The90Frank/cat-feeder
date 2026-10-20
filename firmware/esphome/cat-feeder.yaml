@@ -48,13 +48,17 @@ external_components:
   - source:
       type: local
       path: components
-    components: [fdx_b]
+    components: [fdx_b, tmc2209_uart]
 
 uart:
   - id: uart_chip
     rx_pin: GPIO16            # WL-134 TX
     tx_pin: GPIO17            # loopback self-test only: jumper GPIO17 -> GPIO16
     baud_rate: 9600
+  - id: uart_driver           # TMC2209 single-wire: TX via 1 kOhm, RX direct to PDN_UART
+    tx_pin: GPIO27
+    rx_pin: GPIO26
+    baud_rate: 115200
 
 # --- Microchip reader (WL-134, FDX-B 134.2 kHz) --------------------------------------
 fdx_b:
@@ -108,11 +112,27 @@ globals:
   - id: level_before_mm
     type: float
     initial_value: "NAN"
-  - id: jammed                # set by StallGuard (M3)
+  - id: jammed                # set by StallGuard via DIAG
     type: bool
     initial_value: "false"
+  - id: move_started_ms
+    type: uint32_t
+    initial_value: "0"
 
 # --- Motor ---------------------------------------------------------------------------
+# Driver registers over UART; re-applied automatically after a driver power cycle.
+tmc2209_uart:
+  id: driver
+  uart_id: uart_driver
+  address: 0                  # MS1 = MS2 = GND
+  rsense: 0.11                # typical StepStick module
+  run_current: 0.8            # A rms
+  microsteps: 8               # 1600 steps per auger turn
+  stall_threshold: 60         # tune with "StallGuard result" while the auger turns
+  sg_result:
+    name: StallGuard result
+    entity_category: diagnostic
+
 # TMC2209 in STEP/DIR mode. EN is active low: the a4988 "sleep" pin, inverted,
 # disables the driver at rest (silent, cool). Kibble in the flights holds the auger.
 stepper:
@@ -189,6 +209,20 @@ number:
     initial_value: 30
     optimistic: true
     restore_value: true
+
+  - platform: template
+    id: stall_threshold
+    name: Stall threshold
+    entity_category: config
+    mode: box
+    min_value: 0
+    max_value: 255
+    step: 1
+    initial_value: 60
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: id(driver).set_stall_threshold((uint8_t) x);
 
 datetime:
   - platform: template
@@ -303,6 +337,25 @@ event:
       - auger_jammed
       - time_invalid
 
+# --- Stall detection ---------------------------------------------------------------------
+# DIAG goes high on a StallGuard stall. Ignored during the first 500 ms of a move:
+# StallGuard is unreliable while accelerating.
+binary_sensor:
+  - platform: gpio
+    id: auger_stall
+    name: Auger stall
+    entity_category: diagnostic
+    pin: GPIO34               # input only, driven push-pull by the TMC2209
+    filters:
+      - delayed_on: 20ms
+    on_press:
+      - lambda: |-
+          bool moving = id(auger).current_position != id(auger).target_position;
+          if (moving && millis() - id(move_started_ms) > 500) {
+            id(jammed) = true;
+            ESP_LOGW("feeder", "StallGuard: auger stalled");
+          }
+
 # --- Hopper level ----------------------------------------------------------------------
 sensor:
   - platform: vl53l0x
@@ -373,6 +426,7 @@ script:
       - lambda: |-
           id(level_before_mm) = id(level_mm).state;
           id(jammed) = false;
+          id(move_started_ms) = millis();
       - stepper.report_position:
           id: auger
           position: 0
@@ -390,6 +444,14 @@ script:
             - stepper.set_target:
                 id: auger
                 target: !lambda return id(auger).current_position;
+            # Back off a quarter turn (400 steps) to free the kibble.
+            - stepper.set_target:
+                id: auger
+                target: !lambda "return id(auger).current_position + (id(invert_auger).state ? 400 : -400);"
+            - wait_until:
+                condition:
+                  lambda: return id(auger).current_position == id(auger).target_position;
+                timeout: 5s
             - event.trigger:
                 id: feeder_event
                 event_type: auger_jammed
