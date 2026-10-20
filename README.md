@@ -1,13 +1,13 @@
 # cat-feeder
 
-Smart cat food dispenser built on **ESP32 + ESPHome + Home Assistant**.
+Smart cat food dispenser built on **ESP32 + ESPHome**, with optional **Home Assistant** integration.
 
 - Dispenses a configurable portion through a 3D-printed auger driven by a NEMA 17 + TMC2209
 - Identifies the cat by its collar tag (RFID 125 kHz or NFC 13.56 MHz)
-- Feeds at most once per time slot; slots and portion size are configured in Home Assistant
+- Feeds at most once per time slot; slots and portion size are configurable remotely (Home Assistant) or locally (BLE)
 - Reports the hopper fill level and raises a low-food alarm
 
-The ESP32 is a plain sensor/actuator node; all business logic lives in Home Assistant.
+The device is autonomous: feeding logic runs on the ESP32, configuration persists in flash, and time is kept by SNTP with a DS3231 RTC fallback. Home Assistant (Wi-Fi) and BLE are configuration channels, not requirements.
 
 ## Layout
 
