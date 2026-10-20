@@ -54,15 +54,12 @@ ANT_GROOVE_GAP = 2.0    # wall between bowl seat and groove
 AUGER_ID = 40.0
 AUGER_WALL = 5.0
 AUGER_Z = REAR_H + 28.0             # axis height
-AUGER_Y0 = -25.0                    # front end of the horizontal tube
+AUGER_Y0 = -35.0                    # front end of the tube: kibble drops into the bowl here
 AUGER_Y1 = 110.0                    # rear end (motor flange)
 # The horizontal run between the hopper inlet and AUGER_Y0 keeps kibble inside the
 # auger flights when the motor is stopped: the auger itself is the shut-off.
 
-# --- Spout: sloped tube after the auger, ends inside the bowl -----------------------
-SPOUT_ANGLE = 30.0                  # degrees below horizontal; kibble slides at ~25-30
-SPOUT_REACH = 20.0                  # horizontal reach past the housing; exit face is vertical
-BOWL_NOTCH_CLEAR = 1.0
+BOWL_NOTCH_CLEAR = 1.0              # bowl rear wall hugs the housing tube
 
 # --- NEMA 17 -------------------------------------------------------------------------
 NEMA = 42.3
@@ -76,7 +73,18 @@ HOPPER_Y = 55.0                     # hopper axis
 HOPPER_SEG_H = 115.0                # segment height; add segments for more capacity
 HOPPER_SEGMENTS = 2
 COLLAR_H = 18.0
-LID_H = 15.0
+
+# --- Lid: cap over the top segment, ToF sensor in the middle, desiccant chamber behind --------
+LID_R = 48.0                        # wider than the tube so a 5 g sachet fits beside the sensor
+LID_SKIRT_D = 10.0                  # slips over the top segment
+LID_FLOOR_T = 2.0
+DESICCANT_H = 8.0                   # 5 g silica sachet: ~40 x 30 x 6 mm, lying flat
+DESICCANT_OFFSET = 8.0              # chamber starts this far behind the hopper axis
+DESICCANT_WALL = 2.0
+COVER_T = 2.0
+COVER_LEDGE = 1.5
+VENT_SLOT_W = 2.0                   # narrower than any kibble
+VENT_SLOT_PITCH = 5.0
 
 # --- Wall mount ---------------------------------------------------------------------
 BACK_T = 6.0
@@ -113,8 +121,6 @@ BASE_BOLT_X = 55.0
 BASE_BOLT_Z = FRONT_H / 2
 TAB_W = 12.0
 TAB_T = 5.0
-SPOUT_SLEEVE_L = 10.0
-SPOUT_SLEEVE_T = 3.0
 HOPPER_COLLAR_H = 10.0
 HOPPER_COLLAR_T = 3.0
 DOOR_T = 2.5
@@ -142,22 +148,6 @@ def cyl_z(r, z0, z1, x=0.0, y=0.0):
 
 def cyl_y(r, y0, y1, x=0.0, z=0.0):
     return Part.makeCylinder(r, y1 - y0, V(x, y0, z), V(0, 1, 0))
-
-
-def cyl_dir(r, start, direction, length):
-    d = App.Vector(direction)
-    d.normalize()
-    return Part.makeCylinder(r, length, start, d)
-
-
-def spout_dir():
-    import math
-    a = math.radians(SPOUT_ANGLE)
-    return V(0, -math.cos(a), -math.sin(a))
-
-
-def spout_start():
-    return V(0, AUGER_Y0, AUGER_Z)
 
 
 def bowl_footprint(side, z0, z1, fillet):
@@ -278,12 +268,9 @@ def make_bowl():
     inner = bowl_footprint(BOWL_SIDE - 2 * BOWL_WALL, z0 + BOWL_WALL, z0 + BOWL_H + 1,
                            BOWL_FILLET - BOWL_WALL)
     s = outer.cut(inner)
-    # Notch in the rear wall hugging the spout and its sleeve: no gap where kibble could escape.
-    ro = AUGER_ID / 2 + AUGER_WALL
-    notch = spout_body(ro + BOWL_NOTCH_CLEAR)
-    sleeve = cyl_y(ro + SPOUT_SLEEVE_T + BOWL_NOTCH_CLEAR, AUGER_Y0 - 1, AUGER_Y0 + SPOUT_SLEEVE_L + 1,
-                   z=AUGER_Z)
-    return s.cut(notch).cut(sleeve)
+    # Notch in the rear wall hugging the housing tube: no gap where kibble could escape.
+    notch = cyl_y(AUGER_ID / 2 + AUGER_WALL + BOWL_NOTCH_CLEAR, AUGER_Y0 - 1, 1, z=AUGER_Z)
+    return s.cut(notch)
 
 
 def make_auger_housing():
@@ -308,36 +295,6 @@ def make_auger_housing():
     return cut_all(s, [bore, socket, inlet, shaft] + nema + tab)
 
 
-def spout_body(r, extend=0.0):
-    """Elbow + sloped tube of radius r, between the housing end and a vertical exit plane.
-
-    `extend` pushes both planes outward, so a bore cut with it opens both ends cleanly.
-    """
-    import math
-    start = spout_start()
-    length = SPOUT_REACH / math.cos(math.radians(SPOUT_ANGLE)) + 2 * r
-    s = cyl_dir(r, start, spout_dir(), length).fuse(Part.makeSphere(r, start))
-    big = 4 * r + length
-    y_exit = AUGER_Y0 - SPOUT_REACH - extend
-    y_back = AUGER_Y0 + extend
-    front = box(-big, y_exit - big, AUGER_Z - big, big, y_exit, AUGER_Z + big)
-    behind = box(-big, y_back, AUGER_Z - big, big, y_back + big, AUGER_Z + big)
-    return s.cut(front).cut(behind)
-
-
-def make_spout():
-    """Separate part: short sloped tube with a sleeve that slips onto the auger housing.
-
-    The exit face is vertical, so nothing sticks out toward the cat's head.
-    """
-    ro = AUGER_ID / 2 + AUGER_WALL
-    y0, y1 = AUGER_Y0, AUGER_Y0 + SPOUT_SLEEVE_L
-    sleeve = cyl_y(ro + SPOUT_SLEEVE_T, y0, y1, z=AUGER_Z).cut(cyl_y(ro + 0.2, y0 - 1, y1 + 1, z=AUGER_Z))
-    s = spout_body(ro).fuse(sleeve).cut(spout_body(AUGER_ID / 2, extend=1.0))
-    grub = cyl_z(M3_PILOT / 2, AUGER_Z, AUGER_Z + ro + SPOUT_SLEEVE_T + 1, y=(y0 + y1) / 2)
-    return s.cut(grub)
-
-
 def hopper_z0():
     return AUGER_Z + AUGER_ID / 2 + AUGER_WALL
 
@@ -355,17 +312,55 @@ def make_hopper_segment(i):
     return s
 
 
+def lid_z():
+    """Top edge of the last hopper segment: the lid floor sits on it."""
+    return hopper_z0() + HOPPER_SEGMENTS * HOPPER_SEG_H
+
+
+def desiccant_region(r, z0, z1, grow=0.0):
+    """D-shaped region behind the sensor: circle of radius r minus the front part."""
+    y_cut = HOPPER_Y + DESICCANT_OFFSET - grow
+    disc = cyl_z(r, z0, z1, y=HOPPER_Y)
+    return disc.common(box(-r - 1, y_cut, z0 - 1, r + 1, HOPPER_Y + r + 1, z1 + 1))
+
+
 def make_lid():
-    z0 = hopper_z0() + HOPPER_SEGMENTS * HOPPER_SEG_H
-    z1 = z0 + LID_H
-    ro = HOPPER_ID / 2 + HOPPER_WALL + 3
-    s = cyl_z(ro, z0, z1, y=HOPPER_Y)
-    skirt = cyl_z(HOPPER_ID / 2 + HOPPER_WALL + 0.3, z0 - 1, z1 - 4, y=HOPPER_Y)
+    zt = lid_z()
+    z_floor = zt + LID_FLOOR_T
+    z_ch = z_floor + DESICCANT_H
+    z_top = z_ch + COVER_T
+    ro = HOPPER_ID / 2 + HOPPER_WALL
+    body = cyl_z(LID_R, zt, z_top, y=HOPPER_Y)
+    skirt = cyl_z(ro + 3, zt - LID_SKIRT_D, zt, y=HOPPER_Y).cut(
+        cyl_z(ro + 0.3, zt - LID_SKIRT_D - 1, zt + 0.01, y=HOPPER_Y))
+    s = body.fuse(skirt)
+    r_ch = LID_R - DESICCANT_WALL
+    chamber = desiccant_region(r_ch, z_floor, z_ch + 0.01)
+    ledge = desiccant_region(r_ch + COVER_LEDGE, z_ch, z_top + 1, grow=COVER_LEDGE)
+    # Fingernail notch to lift the cover.
+    notch = box(-5, HOPPER_Y + r_ch - 1, z_ch, 5, HOPPER_Y + LID_R + 1, z_top + 1)
+    # Vent slots in the floor, only above the hopper bore: air in, kibble out.
+    vents = []
+    r_in = HOPPER_ID / 2 - 2
+    y = HOPPER_Y + DESICCANT_OFFSET + DESICCANT_WALL + VENT_SLOT_W
+    while y + VENT_SLOT_W < HOPPER_Y + r_in:
+        half = (r_in ** 2 - (y + VENT_SLOT_W - HOPPER_Y) ** 2) ** 0.5 - 2
+        if half > 3:
+            vents.append(box(-half, y, zt - 1, half, y + VENT_SLOT_W, z_floor + 0.01))
+        y += VENT_SLOT_PITCH
+    # VL53L0X: board pocket down to the floor, short window through it (keeps the cone clear).
     bw, bd = TOF_BOARD
     ww, wd = TOF_WINDOW
-    board = box(-bw / 2, HOPPER_Y - bd / 2, z1 - 2.5, bw / 2, HOPPER_Y + bd / 2, z1 + 1)
-    window = box(-ww / 2, HOPPER_Y - wd / 2, z0, ww / 2, HOPPER_Y + wd / 2, z1)
-    return cut_all(s, [skirt, board, window])
+    board = box(-bw / 2, HOPPER_Y - bd / 2, z_floor, bw / 2, HOPPER_Y + bd / 2, z_top + 1)
+    window = box(-ww / 2, HOPPER_Y - wd / 2, zt - 1, ww / 2, HOPPER_Y + wd / 2, z_floor + 0.01)
+    return cut_all(s, [chamber, ledge, notch, board, window] + vents)
+
+
+def make_desiccant_cover():
+    """Press-fit D-shaped cover closing the desiccant chamber."""
+    z_ch = lid_z() + LID_FLOOR_T + DESICCANT_H
+    r = LID_R - DESICCANT_WALL + COVER_LEDGE - 0.2
+    return desiccant_region(r, z_ch, z_ch + COVER_T, grow=COVER_LEDGE - 0.2)
 
 
 def make_auger():
@@ -443,11 +438,11 @@ PARTS = [
     ("BayDoor", make_bay_door, True, (0.75, 0.75, 0.70)),
     ("Bowl", make_bowl, True, (0.95, 0.60, 0.30)),
     ("AugerHousing", make_auger_housing, True, (0.40, 0.65, 0.90)),
-    ("Spout", make_spout, True, (0.30, 0.55, 0.85)),
     ("Auger", make_auger, True, (0.95, 0.85, 0.30)),
     *[(f"HopperSegment{i + 1}", (lambda i=i: make_hopper_segment(i)), True, (0.80, 0.90, 1.00))
       for i in range(HOPPER_SEGMENTS)],
     ("Lid", make_lid, True, (0.40, 0.65, 0.90)),
+    ("DesiccantCover", make_desiccant_cover, True, (0.95, 0.95, 0.95)),
     ("BackPlate", make_back_plate, True, (0.70, 0.70, 0.70)),
     ("UpperBracket", make_upper_bracket, True, (0.70, 0.70, 0.70)),
     ("NEMA17", make_motor, False, (0.20, 0.20, 0.20)),

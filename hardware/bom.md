@@ -19,6 +19,12 @@ Stato: **bozza**, quantità ricavate dal modello in [`cad/build.py`](../cad/buil
 | 1 | Resistenza 1 kΩ | UART single-wire del TMC2209 |
 | — | Millefori, cavetti, connettori JST/Dupont | |
 
+## Consumabili
+
+| Q.tà | Componente | Note |
+|---|---|---|
+| 1 | **Sacchetto di gel di silice da 5 g** (~40 × 30 × 6 mm) | nella camera del coperchio, non tocca il cibo · rigenerabile in forno |
+
 ## Zavorra
 
 | Q.tà | Componente | Note |
@@ -35,13 +41,12 @@ Stato: **bozza**, quantità ricavate dal modello in [`cad/build.py`](../cad/buil
 | 4 | M3 × 8 | NEMA 17 ↔ flangia |
 | 8 | M3 × 8 autofilettante + rondella larga Ø 9 | fermi delle barre di zavorra |
 | 2 | M3 × 8 autofilettante | sportello del vano elettronica |
-| 1 | Grano M3 × 6 | beccuccio sul corpo coclea |
 | 1 | Grano M3 × 6 | mozzo della coclea sull'albero motore (sul piano a D) |
 | 4 | Vite Ø 4 mm, testa ≤ 8,5 mm + tassello | fissaggio a muro (asole) |
 
 ## Pezzi stampati
 
-Materiale consigliato: **PETG** (alimentare per ciotola, coclea, beccuccio e cisterna). Piatto minimo **180 × 180 × 180 mm**.
+Materiale consigliato: **PETG** (alimentare per ciotola, coclea, corpo coclea e cisterna). Piatto minimo **180 × 180 × 180 mm**.
 
 | Pezzo | File | Ingombro (mm) |
 |---|---|---|
@@ -49,12 +54,12 @@ Materiale consigliato: **PETG** (alimentare per ciotola, coclea, beccuccio e cis
 | Base posteriore | `rear-base` | 170 × 160 × 55 |
 | Sportello vano | `bay-door` | 128 × 46 × 2,5 |
 | Ciotola | `bowl` | 130 × 130 × 45 |
-| Corpo coclea | `auger-housing` | 140 × 85 × 71 |
-| Beccuccio | `spout` | 68 × 56 × 30 |
-| Coclea | `auger` | 134 × Ø 38 |
+| Corpo coclea | `auger-housing` | 150 × 85 × 71 |
+| Coclea | `auger` | 144 × Ø 38 |
 | Cisterna, segmento 1 | `hopper-segment1` | 125 × Ø 85 |
 | Cisterna, segmento 2 | `hopper-segment2` | 115 × Ø 79 |
-| Coperchio | `lid` | Ø 85 × 15 |
+| Coperchio (sensore + camera antiumidità) | `lid` | Ø 96 × 22 |
+| Tappo camera antiumidità | `desiccant-cover` | 94 × 41 × 2 |
 | Schienale | `back-plate` | 170 × 170 × 6 |
 | Staffa superiore | `upper-bracket` | 154 × 120 × 90 |
 

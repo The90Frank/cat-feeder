@@ -34,11 +34,17 @@ Già disponibile: **ESP32-D devkit**.
 | ☐ | 1 | **Kit viti M3** (8, 12 mm) + dadi + rondelle | serve: 4 × M3×12 + dadi, 4 × M3×8 | 5–8 |
 | ☐ | 8 | Rondelle M3 **larghe** (Ø esterno ~9 mm) | fermi della zavorra | — |
 | ☐ | 10 | Viti **autofilettanti M3 × 8** (per plastica) | zavorra (8) + sportello (2) | 2 |
-| ☐ | 2 | **Grani M3 × 6** (punta piana) | beccuccio + mozzo coclea | 1 |
+| ☐ | 1 | **Grano M3 × 6** (punta piana) | mozzo coclea | 1 |
 | ☐ | 2 + 2 | **Bulloni M4 × 20** e **M4 × 16** + 4 dadi + 4 rondelle | giunzione basi, schienale | 2 |
 | ☐ | 4 | Viti **Ø 4 mm**, testa **≤ 8,5 mm** + tasselli | fissaggio a muro (opzionale) | 2 |
 
 **Subtotale ferramenta: ~18–25 €**
+
+## Consumabili
+
+| ☐ | Q.tà | Articolo | Note | ~€ |
+|---|---|---|---|---|
+| ☐ | 1 | **Sacchetti di gel di silice da 5 g** (confezione) | ~40 × 30 × 6 mm · meglio con indicatore di saturazione · per alimenti | 5–8 |
 
 ## Stampa 3D
 
@@ -55,4 +61,4 @@ Già disponibile: **ESP32-D devkit**.
 
 ## Totale indicativo
 
-**~85–135 €**, esclusi ESP32 (già disponibile) e stampante.
+**~90–145 €**, esclusi ESP32 (già disponibile) e stampante.

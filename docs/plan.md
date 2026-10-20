@@ -253,6 +253,8 @@ Ipotesi: dose 15 g ≈ 37 ml (croccantini sfusi ~0,4 kg/L), consumo ~55 g/giorno
 - Sensore **centrato** sul coperchio: la superficie dei croccantini forma un cono
 - ⚠️ **Cono del VL53L0X** (~25°): a 23 cm copre Ø ~10 cm, più del tubo, e vede le pareti. Da validare al banco: interno **opaco e scuro**, sensore centrato; ripiego **VL53L1X** con ROI ristretta
 - Imbocco della coclea ≥ **5–6×** la dimensione del croccantino, contro i ponti
+- **Uscita senza beccuccio**: il cibo cade dalla fine del tubo della coclea, già sopra la ciotola. Il tratto orizzontale oltre la bocca della cisterna trattiene i croccantini a motore fermo
+- **Freschezza**: camera per un **sacchetto di gel di silice da 5 g** nel coperchio, dietro il sensore. Feritoie da 2 mm verso la cisterna (passa l'aria, non i croccantini), tappo a pressione: si sostituisce senza aprire la cisterna. Il coperchio sporge (Ø 96) per farci stare il sacchetto
 - Una lattina vera ha fondo metallico e interno in alluminio: solo come riferimento di misura; il prototipo usa un tubo stampato o in plastica
 
 ### Altro
