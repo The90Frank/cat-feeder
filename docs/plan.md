@@ -185,6 +185,12 @@ wifi:
 
 Per rendere usabile nRF Connect: tabella UUID → parametro, con formato dei valori, in `docs/`.
 
+### Segreti
+
+Il repo è **pubblico**. Credenziali Wi-Fi, chiave API e passkey BLE stanno **solo** in `firmware/esphome/secrets.yaml` (escluso da git) e si richiamano con `!secret`. Il modello con i soli segnaposto è [`secrets.example.yaml`](../firmware/esphome/secrets.example.yaml).
+
+Nel repo non vanno nemmeno nomi, indirizzi o porte di dispositivi reali della propria rete.
+
 ### Aggiornamento firmware
 
 Solo **USB seriale**, niente blocco `ota:`. Compilazione con ESPHome (dashboard o CLI, download manuale del `.bin`); flash via USB dal PC di sviluppo.
