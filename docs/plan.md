@@ -74,7 +74,8 @@ Assegnazione dei pin: [`hardware/pinout.md`](../hardware/pinout.md).
 | ID microchip autorizzati | `globals` array (max N, oggi 1) | `restore_value: true` |
 | Flag fasce | `globals` bool **per gatto × fascia** | `restore_value: true` — un riavvio a metà fascia non rieroga |
 | Pausa | `switch` (template) | `restore_mode: RESTORE_DEFAULT_OFF` |
-| Eroga ora | `button` | — |
+| Dose override (passi) | `number` (template) | no — default = dose standard |
+| Eroga ora (override) | `button` | — |
 | Motore | `stepper` (STEP/DIR) | — |
 | Blocco motore | `binary_sensor` su DIAG | — |
 | Livello | `vl53l0x` → `sensor` template mm / % | — |
@@ -126,6 +127,39 @@ flowchart TD
 
 Reset giornaliero: `on_time` alle **00:00** sul dispositivo, tutti i flag → `off`.
 
+### Override manuale
+
+Erogazione su comando esplicito, da **HA** (`button` "Eroga ora") o da **BLE** (caratteristica dedicata). Serve a dare cibo **fuori fascia, sotto soglia o senza microchip**.
+
+| Controllo | Automatica (microchip) | Override manuale |
+|---|---|---|
+| Microchip autorizzato | ✅ richiesto | ⏭️ ignorato |
+| Fascia oraria | ✅ richiesta | ⏭️ ignorata |
+| Flag gatto × fascia | ✅ richiesto | ⏭️ ignorato |
+| Livello > soglia | ✅ richiesto | ⏭️ ignorato (la soglia è una riserva, non un divieto) |
+| Ora valida | ✅ richiesta | ⏭️ ignorata |
+| Pausa | ✅ blocca | ⏭️ ignorata (comando esplicito) |
+| **StallGuard** | ✅ | ✅ **sempre attivo** |
+
+Regole:
+
+- **Dose personalizzata**: `number` "dose override" in passi; se non impostata vale la dose standard. Via BLE il valore viaggia nella stessa scrittura del comando
+- **Il flag della fascia non cambia**: l'override non consuma l'erogazione automatica della fascia
+- **Anti-doppio comando**: dopo un override, altri override ignorati per **~10 s**
+- **Evento `manual_feed`** verso HA con origine (`ha` / `ble`) e passi erogati
+
+```mermaid
+flowchart TD
+    O["Override<br/>HA o BLE"] --> CD{"Ultimo override < 10 s?"}
+    CD -- sì --> X["Ignora"]
+    CD -- no --> Q["Dose = override, altrimenti standard"]
+    Q --> D["Ruota N passi"]
+    D --> SG{"StallGuard?"}
+    SG -- sì --> J["Stop · retromarcia breve · evento: coclea bloccata"]
+    SG -- no --> E["Evento: manual_feed (origine, passi)"]
+    E --> M["Registra livello post-dose"]
+```
+
 ### Fasce orarie (default, modificabili)
 
 | Fascia | Orario |
@@ -176,7 +210,7 @@ wifi:
 
 ### Configurazione locale via BLE
 
-- Servizio GATT custom: una caratteristica per parametro (dose, fasce, soglia, pausa, eroga ora) + una di sola lettura per lo stato
+- Servizio GATT custom: una caratteristica per parametro (dose, fasce, soglia, pausa) + una per l'**override** (scrittura = eroga, payload opzionale = passi) + una di sola lettura per lo stato
 - Ogni scrittura aggiorna la stessa entità che vede HA: un'unica fonte di verità
 - **Client: nRF Connect** — scrittura diretta delle caratteristiche, niente app da sviluppare
 - **Sicurezza: pairing con passkey statica** compilata nel firmware, stampata su un **adesivo** sul dispositivo. Il telefono la chiede al primo collegamento
@@ -200,7 +234,7 @@ Solo **USB seriale**, niente blocco `ota:`. Compilazione con ESPHome (dashboard 
 Istanza: **esistente**. Ruolo ridotto a **pannello remoto e notifiche**:
 
 - le entità ESPHome (`number`, `datetime`, `switch`, `button`) compaiono da sole in HA: niente helper da creare
-- automazioni solo per notifiche sugli eventi del dispositivo (erogato, cisterna vuota, coclea bloccata, ora non valida)
+- automazioni solo per notifiche sugli eventi del dispositivo (erogato, `manual_feed`, cisterna vuota, coclea bloccata, ora non valida)
 - dashboard: livello cisterna, dosi residue stimate, ultima erogazione, stato flag
 
 ## Fase 4 — Meccanica e stampa 3D
@@ -245,6 +279,7 @@ Ipotesi: dose 15 g ≈ 37 ml (croccantini sfusi ~0,4 kg/L), consumo ~55 g/giorno
 | 2026-10-20 | Alimentazione **12V** |
 | 2026-10-20 | **Un gatto** per ora, struttura pronta per N |
 | 2026-10-20 | Mappa dei pin: [`hardware/pinout.md`](../hardware/pinout.md) |
+| 2026-10-20 | **Override manuale** da HA o BLE: ignora fascia, soglia, pausa e flag · dose personalizzata · non consuma la fascia · StallGuard sempre attivo |
 
 ### Aperte
 
