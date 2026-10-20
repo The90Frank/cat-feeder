@@ -32,7 +32,7 @@ flowchart LR
 | `firmware/esphome/` | ESPHome configuration and local components (`fdx_b`, `tmc2209_uart`, `ble_passkey`) |
 | `hardware/` | Pin map, bill of materials, shopping list |
 | `cad/` | Parametric FreeCAD model (`build.py`) and STEP/STL exports |
-| `homeassistant/` | Dashboards and notification automations (to do) |
+| `homeassistant/` | Notifications blueprint |
 
 ## Status
 

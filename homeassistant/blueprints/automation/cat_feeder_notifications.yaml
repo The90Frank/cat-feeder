@@ -1,0 +1,198 @@
+blueprint:
+  name: Cat feeder notifications
+  description: >-
+    Push notifications for the cat-feeder ESPHome device: meals, manual feeds,
+    missed meals, empty hopper, jammed auger, invalid clock, low food and offline device.
+    Every message can be translated in the "Messages" section.
+  domain: automation
+  source_url: https://github.com/The90Frank/cat-feeder/blob/main/homeassistant/blueprints/automation/cat_feeder_notifications.yaml
+  input:
+    device_section:
+      name: Devices
+      icon: mdi:cat
+      input:
+        feeder_event:
+          name: Feeder event entity
+          description: The "Feeder event" entity of the cat feeder.
+          selector:
+            entity:
+              filter:
+                - domain: event
+                  integration: esphome
+        doses_left:
+          name: Doses left sensor
+          description: The "Doses left" sensor, used for low food and offline alerts.
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  integration: esphome
+        notify_device:
+          name: Phone
+          description: Device running the Home Assistant companion app.
+          selector:
+            device:
+              filter:
+                - integration: mobile_app
+    behaviour_section:
+      name: Notifications
+      icon: mdi:bell
+      input:
+        notify_types:
+          name: Send notifications for
+          default: [fed, manual_feed, slot_missed, hopper_empty, auger_jammed, time_invalid, low_doses, offline]
+          selector:
+            select:
+              multiple: true
+              options:
+                - label: The cat has eaten
+                  value: fed
+                - label: Manual feed (Home Assistant or BLE)
+                  value: manual_feed
+                - label: Missed meal
+                  value: slot_missed
+                - label: Hopper empty when the cat came
+                  value: hopper_empty
+                - label: Auger jammed
+                  value: auger_jammed
+                - label: Clock not valid
+                  value: time_invalid
+                - label: Food running low
+                  value: low_doses
+                - label: Device offline
+                  value: offline
+        low_doses_threshold:
+          name: Low food threshold
+          description: Notify when the estimated doses left drop below this value.
+          default: 3
+          selector:
+            number:
+              min: 1
+              max: 20
+              mode: box
+        offline_minutes:
+          name: Offline after
+          description: Minutes of unavailability before the offline alert.
+          default: 10
+          selector:
+            number:
+              min: 1
+              max: 120
+              unit_of_measurement: min
+              mode: box
+    messages_section:
+      name: Messages
+      icon: mdi:translate
+      collapsed: true
+      input:
+        title:
+          name: Title
+          default: Cat feeder
+          selector:
+            text:
+        msg_fed:
+          name: The cat has eaten
+          default: The cat has eaten.
+          selector:
+            text:
+        msg_manual_ha:
+          name: Manual feed from Home Assistant
+          default: Food dispensed manually from Home Assistant.
+          selector:
+            text:
+        msg_manual_ble:
+          name: Manual feed over BLE
+          default: Food dispensed manually over Bluetooth.
+          selector:
+            text:
+        msg_slot_missed:
+          name: Missed meal
+          description: "{slot} is replaced by the slot number (1-3)."
+          default: The cat did not eat in slot {slot}.
+          selector:
+            text:
+        msg_hopper_empty:
+          name: Hopper empty
+          default: The cat came to eat but the hopper is empty. Refill it.
+          selector:
+            text:
+        msg_auger_jammed:
+          name: Auger jammed
+          default: The auger is jammed. Check the dispenser.
+          selector:
+            text:
+        msg_time_invalid:
+          name: Clock not valid
+          default: The feeder clock is not set; automatic feeding is suspended.
+          selector:
+            text:
+        msg_low_doses:
+          name: Food running low
+          description: "{doses} is replaced by the estimated doses left."
+          default: "Food is running low: about {doses} doses left."
+          selector:
+            text:
+        msg_offline:
+          name: Device offline
+          default: The cat feeder is offline. It keeps feeding on its own, but cannot be monitored.
+          selector:
+            text:
+
+mode: queued
+max: 10
+
+variables:
+  notify_types: !input notify_types
+  title: !input title
+  messages:
+    fed: !input msg_fed
+    manual_feed_ha: !input msg_manual_ha
+    manual_feed_ble: !input msg_manual_ble
+    slot_missed: !input msg_slot_missed
+    hopper_empty: !input msg_hopper_empty
+    auger_jammed: !input msg_auger_jammed
+    time_invalid: !input msg_time_invalid
+    low_doses: !input msg_low_doses
+    offline: !input msg_offline
+  # Rendered after the trigger: event type (or trigger id), notification key, text.
+  kind: >-
+    {{ trigger.to_state.attributes.event_type | default('')
+       if trigger.id == 'event' else trigger.id }}
+  key: >-
+    {% if kind.startswith('manual_feed') %}manual_feed
+    {%- elif kind.startswith('slot_missed') %}slot_missed
+    {%- else %}{{ kind }}{% endif %}
+  message: >-
+    {% if kind.startswith('slot_missed') %}{{ messages.slot_missed | replace('{slot}', kind[-1]) }}
+    {%- elif kind == 'low_doses' %}{{ messages.low_doses | replace('{doses}', trigger.to_state.state | int(0) | string) }}
+    {%- else %}{{ messages.get(kind, kind) }}{% endif %}
+
+triggers:
+  # The event entity's state is the timestamp of the last event; reconnects and
+  # restarts go through unavailable/unknown and are ignored.
+  - trigger: state
+    entity_id: !input feeder_event
+    id: event
+    not_from: [unavailable, unknown]
+    not_to: [unavailable, unknown]
+  - trigger: numeric_state
+    entity_id: !input doses_left
+    id: low_doses
+    below: !input low_doses_threshold
+  - trigger: state
+    entity_id: !input doses_left
+    id: offline
+    to: unavailable
+    for:
+      minutes: !input offline_minutes
+
+conditions:
+  - condition: template
+    value_template: "{{ key in notify_types }}"
+
+actions:
+  - device_id: !input notify_device
+    domain: mobile_app
+    type: notify
+    title: "{{ title }}"
+    message: "{{ message }}"
