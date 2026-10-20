@@ -4,6 +4,7 @@ secrets.yaml
 *.bin
 
 # CAD / slicer
+*.FCStd
 *.FCStd1
 *.FCBak
 *.gcode
