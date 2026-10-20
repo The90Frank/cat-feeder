@@ -1,6 +1,8 @@
 # Mappa dei pin — ESP32-D (WROOM-32D)
 
-Stato: **bozza**, da verificare sulla devkit reale prima del cablaggio.
+Stato: **verificata sulla devkit** (ESP32-WROOM-32D, 4 MB, USB-seriale CH340).
+
+GPIO esposti dalla devkit: 2, 4, 5, 12–19, 21, 22, 23, 25, 26, 27, 32, 33, 34, 35, VP (36), VN (39), TX0 (1), RX0 (3).
 
 ## Assegnazione
 
@@ -17,7 +19,8 @@ Stato: **bozza**, da verificare sulla devkit reale prima del cablaggio.
 | TMC2209 | PDN_UART ← TX ESP | 27 | out | UART1 · tramite resistenza **1 kΩ** (UART single-wire) |
 | TMC2209 | PDN_UART → RX ESP | 26 | in | UART1 · collegato direttamente a PDN_UART |
 | TMC2209 | DIAG | 34 | in | StallGuard · pin solo input, ok |
-| — | riserva | 35, 36, 39 | in | solo input: futuri sensori |
+| — | riserva | 4, 13, 14, 17, 18, 19, 23 | I/O | liberi |
+| — | riserva | 35, 36 (VP), 39 (VN) | in | solo input: futuri sensori |
 | — | console USB | 1, 3 | — | UART0, lasciato al log |
 
 Pin **evitati**:
@@ -77,6 +80,6 @@ flowchart LR
 
 ## Da verificare
 
-- [ ] Pinout della devkit in uso (alcune non espongono tutti i GPIO)
+- [x] Pinout della devkit in uso
 - [ ] Livello logico del TX del WL-134 (3.3V o 5V)
 - [ ] Corrente del NEMA 17 scelto → `IRUN` del TMC2209 via UART
